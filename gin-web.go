@@ -1,5 +1,7 @@
 package gin_web
 
+import "github.com/sourcecmdb/gin-web/render"
+
 const  defaultMultipartMemory = 32 << 20  // 32 m  内存
 var (
 	default404Body = []byte("404 page not found")
@@ -75,5 +77,13 @@ type Engine struct {
 	//赋予http.Request的ParseMultipartForm的'maxMemory'参数的值 Value of 'maxMemory' param that is given to http.Request's ParseMultipartForm
 	//方法调用。method call.
 	MaxMultipartMemory int64
-	
+
+	//即使有多余的斜杠，也可以从URL解析参数RemoveExtraSlash。 RemoveExtraSlash a parameter can be parsed from the URL even with extra slashes.
+	//参见PR＃1817并发布＃1644 See the PR #1817 and issue #1644
+	RemoveExtraSlash bool
+
+	delims render.Delims
+	secureJsonPrefix string
+	HTMLRender render.HTMLRender
+
 }
