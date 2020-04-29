@@ -1,6 +1,10 @@
 package gin_web
 
-import "github.com/sourcecmdb/gin-web/render"
+import (
+	"github.com/sourcecmdb/gin-web/render"
+	"html/template"
+	"sync"
+)
 
 const  defaultMultipartMemory = 32 << 20  // 32 m  内存
 var (
@@ -40,7 +44,7 @@ type Engine struct {
 	//客户端使用http状态代码301重定向到/ foo进行GET请求 client is redirected to /foo with http status code 301 for GET requests
 	//和307（表示所有其他请求方法）。 and 307 for all other request methods.
 
-	RedirectTrailingSlash bool
+	RedirectTrailignslash bool
 
 	//如果启用，则路由器尝试修复当前请求路径，如果没有  If enabled, the router tries to fix the current request path, if no
 	//为它注册了句柄。  handle is registered for it.
@@ -85,5 +89,53 @@ type Engine struct {
 	delims render.Delims
 	secureJsonPrefix string
 	HTMLRender render.HTMLRender
-
+	FuncMap   template.FuncMap
+	allNoRoute HandlersChain
+	allNoMethod HandlersChain
+	noRoute HandlersChain
+	pool sync.Pool
+	trees methodTrees
 }
+
+var _ IRouter = &Engine{}
+// New返回一个新的空白Engine实例，不附加任何中间件。 New returns a new blank Engine instance without any middleware attached.
+//默认情况下，配置为： By default the configuration is:
+// - RedirectTrailingSlash:  true
+// - RedirectFixedPath:      false
+// - HandleMethodNotAllowed: false
+// - ForwardedByClientIP:    true
+// - UseRawPath:             false
+// - UnescapePathValues:     true
+func  New() *Engine{
+	debugPrintWARWINGNew()
+	engine := &Engine{
+		RouterGroup: RouterGroup{
+			Handlers: nil,
+			basePath: "/",
+			root:     true,
+		},
+		FuncMap:                template.FuncMap{},
+		RedirectTrailignslash:  true,
+		RedirectFixedPath:      false,
+		HandleMethodNotAllowed: false,
+		ForwardedByClientIP:    true,
+		AppEngine:              defaultAppEngin,
+		UseRawPath:             false,
+		RemoveExtraSlash:       false,
+		UnescapePathValues:     true,
+		MaxMultipartMemory:     defaultMultipartMemory,
+		trees:                  make(methodTrees, 0, 9),
+		delims:                 render.Delims{Left: "{{", Right: "}}"},
+		secureJsonPrefix:       "while(1)",
+	}
+	engine.RouterGroup.engine = engine
+	engine.pool.New = func() interface{} {
+		return engine.allocateContext()
+	}
+	return engine
+}
+
+func (engine *Engine) allocateContext() *Context{
+	return &Context{engine: engine,KeysMutex: &sync.RWMutex{}}
+}
+
