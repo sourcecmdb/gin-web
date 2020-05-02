@@ -3,15 +3,17 @@ package gin_web
 import (
 	"github.com/sourcecmdb/gin-web/render"
 	"html/template"
+	"net/http"
 	"sync"
 )
 
-const  defaultMultipartMemory = 32 << 20  // 32 m  内存
+const defaultMultipartMemory = 32 << 20 // 32 m  内存
 var (
-	default404Body = []byte("404 page not found")
-	default405Body = []byte("405 method not allowed")
+	default404Body  = []byte("404 page not found")
+	default405Body  = []byte("405 method not allowed")
 	defaultAppEngin bool
 )
+
 // HandlerFunc 将gin-web中间件使用的处理程序定义为返回值
 type HandlerFunc func(*Context)
 
@@ -20,20 +22,23 @@ type HandlersChain []HandlerFunc
 
 // last 返回链中的最后与i个处理程序，即 最后一个处理程序是主要
 func (c HandlersChain) Last() HandlerFunc {
-	if length := len(c); length >0 {
+	if length := len(c); length > 0 {
 		return c[length-1]
 	}
 	return nil
 }
+
 // Routeelnfo 表示请求路由的规范 其中包含方法和路径及其处理程序
 type RouteInfo struct {
-	Method  string // 方法
-	Path    string // 路由路径
-	Handler  string // Handler 请求头
+	Method      string      // 方法
+	Path        string      // 路由路径
+	Handler     string      // Handler 请求头
 	HandlerFunc HandlerFunc //
 }
+
 // Routesinfo 定义一个Routeinfo数组
 type Routesinfo []RouteInfo
+
 // Engine  是框架的实例，它包含多路复用器，中间件和配置设置
 // Default  使用New或者Default 创建Engine的实例
 type Engine struct {
@@ -64,7 +69,7 @@ type Engine struct {
 	//如果不允许其他方法，则将请求委托给NotFound   If no other Method is allowed, the request is delegated to the NotFound
 	//处理程序。   handler.
 	HandleMethodNotAllowed bool
-	ForwardedByClientIP  bool
+	ForwardedByClientIP    bool
 
 	//＃726＃755如果启用，它将以 #726 #755 If enabled, it will thrust some headers starting with
 	//'X-AppEngine ...'，以更好地与该PaaS集成。 'X-AppEngine...' for better integration with that PaaS.
@@ -86,18 +91,19 @@ type Engine struct {
 	//参见PR＃1817并发布＃1644 See the PR #1817 and issue #1644
 	RemoveExtraSlash bool
 
-	delims render.Delims
+	delims           render.Delims
 	secureJsonPrefix string
-	HTMLRender render.HTMLRender
-	FuncMap   template.FuncMap
-	allNoRoute HandlersChain
-	allNoMethod HandlersChain
-	noRoute HandlersChain
-	pool sync.Pool
-	trees methodTrees
+	HTMLRender       render.HTMLRender
+	FuncMap          template.FuncMap
+	allNoRoute       HandlersChain
+	allNoMethod      HandlersChain
+	noRoute          HandlersChain
+	pool             sync.Pool
+	trees            methodTrees
 }
 
 var _ IRouter = &Engine{}
+
 // New返回一个新的空白Engine实例，不附加任何中间件。 New returns a new blank Engine instance without any middleware attached.
 //默认情况下，配置为： By default the configuration is:
 // - RedirectTrailingSlash:  true
@@ -106,7 +112,7 @@ var _ IRouter = &Engine{}
 // - ForwardedByClientIP:    true
 // - UseRawPath:             false
 // - UnescapePathValues:     true
-func  New() *Engine{
+func New() *Engine {
 	debugPrintWARWINGNew()
 	engine := &Engine{
 		RouterGroup: RouterGroup{
@@ -134,8 +140,17 @@ func  New() *Engine{
 	}
 	return engine
 }
+func (engine *Engine) Use(middleware ...HandlerFunc) IRoutes {
 
-func (engine *Engine) allocateContext() *Context{
-	return &Context{engine: engine,KeysMutex: &sync.RWMutex{}}
 }
 
+// 默认值返回已连接Logger和Recovery中间件的Engine实例。Default returns an Engine instance with the Logger and Recovery middleware already attached.=
+func Default() *Engine {
+	debugPrintWARWINGDefault()
+	engine := New()
+	engine.Use(Logger, Recover())
+
+}
+func (engine *Engine) allocateContext() *Context {
+	return &Context{engine: engine, KeysMutex: &sync.RWMutex{}}
+}
