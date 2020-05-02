@@ -1,12 +1,15 @@
 package gin_web
 
 import (
+	"math"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 )
+
+const abortIndex int8 = math.MaxInt8 / 2
 
 // 上下文是是最重要的部分。它允许我们在中间件之间的传递变量
 // 管理流程 例如验证请求的json并呈现json响应
@@ -77,4 +80,44 @@ func (c *Context) ClientIP() string {
 		return ip
 	}
 	return ""
+}
+
+//错误将错误附加到当前上下文。 错误被推送到错误列表。 // Error attaches an error to the current context. The error is pushed to a list of errors.
+//对于解析请求期间发生的每个错误，最好都调用Error。 // It's a good idea to call Error for each error that occurred during the resolution of a request.
+//中间件可用于收集所有错误并将它们一起推送到数据库中， // A middleware can be used to collect all the errors and push them to a database together,
+//打印日志，或将其附加到HTTP响应中。 // print a log, or append it in the HTTP response.
+//如果err为nil，错误将惊慌。 // Error will panic if err is nil.
+
+func (c *Context) Error(err error) *Error {
+	if err == nil {
+		panic("err is nil")
+	}
+	parsedError, ok := err.(*Error)
+	if !ok {
+		parsedError = &Error{
+			Err:  err,
+			Type: ErrorTypePrivate,
+		}
+	}
+	c.Errors = append(c.Errors, parsedError)
+	return parsedError
+}
+
+//状态设置HTTP响应代码 //Status sets the HTTP response code
+func (c *Context) Status(code int) {
+	c.Writer.WriteHeader(code)
+}
+
+// AbortWithStatusJSON内部调用`Abort（）`，然后调用`JSON // AbortWithStatusJSON calls `Abort()` and then `JSON` internally.
+//此方法停止链，写入状态代码并返回JSON正文。 // This method stops the chain, writes the status code and return a JSON body.
+//还将Content-Type设置为“ application / json”。// It also sets the Content-Type as "application/json".
+func (c *Context) Abort() {
+	c.index = abortIndex
+}
+
+// AbortWithError内部调用`AbortWithStatus（）`和`Error（）`。 // AbortWithError calls `AbortWithStatus()` and `Error()` internally.
+//此方法停止链，写入状态代码，并将指定的错误推送到`c.Errors`。 // This method stops the chain, writes the status code and pushes the specified error to `c.Errors`.
+//有关更多详细信息，请参见Context.Error（）。 // See Context.Error() for more details.
+func (c *Context) AbortWithStatus(code int) {
+	c.Status(code)
 }

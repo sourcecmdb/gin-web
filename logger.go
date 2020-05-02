@@ -1,8 +1,7 @@
-package logger
+package gin_web
 
 import (
 	"fmt"
-	gin_web "github.com/sourcecmdb/gin-web"
 	go_isatty "github.com/sourcecmdb/gin-web/go-isatty"
 	"io"
 	"net/http"
@@ -119,7 +118,6 @@ func (p *LogFormatterParam) ResetColor() string {
 	return reset
 }
 
-
 //  defaultLogFormatter是Logger中间件使用的默认日志格式功能。 defaultLogFormatter is the default log format function Logger middleware uses.
 var defaultLogFormatter = func(param LogFormatterParam) string {
 	var statusColor, methodColor, resetColor string
@@ -145,14 +143,14 @@ var defaultLogFormatter = func(param LogFormatterParam) string {
 }
 
 // LoggerWithConfig实例具有配置的Logger中间件。 LoggerWithConfig instance a Logger middleware with config.
-func LoggerWithConfig(conf LoggerConfig) gin_web.HandlerFunc {
+func LoggerWithConfig(conf LoggerConfig) HandlerFunc {
 	formatter := conf.Formatter
 	if formatter == nil {
 		formatter = defaultLogFormatter
 	}
 	out := conf.Output
 	if out == nil {
-		out = gin_web.DefaultWriter
+		out = DefaultWriter
 	}
 	notlogged := conf.SkipPaths
 
@@ -172,7 +170,7 @@ func LoggerWithConfig(conf LoggerConfig) gin_web.HandlerFunc {
 		}
 	}
 
-	return func(c *gin_web.Context) {
+	return func(c *Context) {
 		// 开始时间 Start timer
 		start := time.Now()
 		path := c.Request.URL.Path
@@ -182,27 +180,35 @@ func LoggerWithConfig(conf LoggerConfig) gin_web.HandlerFunc {
 		c.Next()
 
 		// 仅在不跳过路径时记录 Log only when path is not being skipped
-	if  _, ok  := skip[path];!ok{
-		param := LogFormatterParam{
-			Request:  c.Request,
-			isTerm: isTerm,
-			keys: c.Keys
-		}
-		 // 停止时间  stop timer
-		 param.TimeStamp = time.Now()
-		 param.Latency = param.TimeStamp.Sub(start)
+		if _, ok := skip[path]; !ok {
+			param := LogFormatterParam{
+				Request: c.Request,
+				isTerm:  isTerm,
+				keys:    c.Keys,
+			}
+			// 停止时间  stop timer
+			param.TimeStamp = time.Now()
+			param.Latency = param.TimeStamp.Sub(start)
 
-		 param.ClientIP = c.ClientIP()
-		 param.Method = c.Request.Method
-		 param.StatusCode = c.Writer.Status()
-		 param.ErrorMessge = c.Errors.ByType(gin_web.ErrorTypePrivate).String()
+			param.ClientIP = c.ClientIP()
+			param.Method = c.Request.Method
+			param.StatusCode = c.Writer.Status()
+			param.ErrorMessge = c.Errors.ByType(ErrorTypePrivate).String()
 
+			param.BodySize = c.Writer.Size()
+
+			if raw != "" {
+				path = path + "?" + raw
+			}
+			param.Path = path
+
+			fmt.Fprint(out, formatter(param))
 		}
 	}
 }
 
 //Logger实例是一个Logger中间件，该中间件会将日志写入gin.DefaultWriter。  Logger instances a Logger middleware that will write the logs to gin.DefaultWriter.
 //默认情况下gin.DefaultWriter = os.Stdout。 By default gin.DefaultWriter = os.Stdout.
-func Logger() gin_web.HandlerFunc {
+func Logger() HandlerFunc {
 	return LoggerWithConfig(LoggerConfig{})
 }
