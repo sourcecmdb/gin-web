@@ -148,6 +148,7 @@ func Default() *Engine {
 	debugPrintWARWINGDefault()
 	engine := New()
 	engine.Use(Logger(), Recovery())
+	return engine
 
 }
 func (engine *Engine) allocateContext() *Context {
