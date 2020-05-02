@@ -1,9 +1,9 @@
 package gin_web
 
 import (
+	"github.com/sourcecmdb/gin-web/logger"
 	"github.com/sourcecmdb/gin-web/render"
 	"html/template"
-	"net/http"
 	"sync"
 )
 
@@ -148,7 +148,7 @@ func (engine *Engine) Use(middleware ...HandlerFunc) IRoutes {
 func Default() *Engine {
 	debugPrintWARWINGDefault()
 	engine := New()
-	engine.Use(Logger, Recover())
+	engine.Use(logger.Logger(), Recovery())
 
 }
 func (engine *Engine) allocateContext() *Context {

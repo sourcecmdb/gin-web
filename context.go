@@ -1,21 +1,23 @@
 package gin_web
 
 import (
+	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 )
 
 // 上下文是是最重要的部分。它允许我们在中间件之间的传递变量
 // 管理流程 例如验证请求的json并呈现json响应
 type Context struct {
-	writername  responesWriter
-	Request  *http.Request
-	Writer ResponesWriter
+	writername responesWriter
+	Request    *http.Request
+	Writer     ResponesWriter
 
-	Params Params
+	Params   Params
 	handlers HandlersChain
-	index int8
+	index    int8
 	fullPath string
 
 	engine *Engine
@@ -27,7 +29,7 @@ type Context struct {
 	Keys map[string]interface{}
 
 	// 错误是使用此上下文的所有处理程序/中间附件带的错误列表 Errors is a list of errors attached to all the handlers/middlewes who used this context
-	Errors  errorMsgs
+	Errors errorMsgs
 
 	// 接受定义用于内容协商的手动接受格式的列表。 Accepted defines a list of manually accepted formats for content negotiation.
 	Accepted []string
@@ -42,4 +44,37 @@ type Context struct {
 	// SameSite允许服务器定义cookie属性，从而无法   SameSite allows a server to define a cookie attribute making it impossible for
 	// 浏览器将此Cookie与跨站点请求一起发送。  the browser to send this cookie along with cross-site requests.
 	sameSite http.SameSite
+}
+
+func (c *Context) requestHeader(key string) string {
+	return c.Request.Header.Get(key)
+}
+func (c *Context) Next() {
+	c.index++
+	for c.index < int8(len(c.handlers)) {
+		c.handlers[c.index](c)
+		c.index++
+	}
+}
+
+func (c *Context) ClientIP() string {
+	if c.engine.ForwardedByClientIP {
+		clientIP := c.requestHeader("X-Formwarded-For")
+		clientIP = strings.TrimSpace(strings.Split(clientIP, ",")[0])
+		if clientIP == "" {
+			clientIP = strings.TrimSpace(c.requestHeader("X-Real-Ip"))
+		}
+		if clientIP != "" {
+			return clientIP
+		}
+	}
+	if c.engine.AppEngine {
+		if addr := c.requestHeader("X-Appenigne-Remote-Addr"); addr != "" {
+			return addr
+		}
+	}
+	if ip, _, err := net.SplitHostPort(strings.TrimSpace(c.Request.RemoteAddr)); err == nil {
+		return ip
+	}
+	return ""
 }

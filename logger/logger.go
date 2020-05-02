@@ -1,9 +1,12 @@
 package logger
 
 import (
+	"fmt"
 	gin_web "github.com/sourcecmdb/gin-web"
+	go_isatty "github.com/sourcecmdb/gin-web/go-isatty"
 	"io"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -74,13 +77,17 @@ func (p *LogFormatterParam) IsOutputColor() bool {
 }
 
 // StatusCodeColor是用于将HTTP状态代码正确记录到终端的ANSI颜色。 StatusCodeColor is the ANSI color for appropriately logging http status code to a terminal.
-func (p *LogFormatterParam) StatusColor() string {
+func (p *LogFormatterParam) StatusCodeColor() string {
 	code := p.StatusCode
-
-	switch code {
+	switch {
 	case code >= http.StatusOK && code < http.StatusMethodNotAllowed:
 		return green
-
+	case code >= http.StatusMultipleChoices && code < http.StatusBadRequest:
+		return white
+	case code >= http.StatusBadRequest && code < http.StatusInternalServerError:
+		return yellow
+	default:
+		return red
 	}
 }
 
@@ -107,20 +114,90 @@ func (p *LogFormatterParam) MethodColor() string {
 	}
 }
 
+//ResetColor重置所有转义属性。 // ResetColor resets all escape attributes.
+func (p *LogFormatterParam) ResetColor() string {
+	return reset
+}
+
+
 //  defaultLogFormatter是Logger中间件使用的默认日志格式功能。 defaultLogFormatter is the default log format function Logger middleware uses.
 var defaultLogFormatter = func(param LogFormatterParam) string {
 	var statusColor, methodColor, resetColor string
 	if param.IsOutputColor() {
-		statusColor = param.StatusCode
+		statusColor = param.StatusCodeColor()
 		methodColor = param.MethodColor()
+		resetColor = param.ResetColor()
 	}
+
+	if param.Latency > time.Minute {
+		//以<1.8安全的方式截断golang Truncate in a golang < 1.8 safe way
+		param.Latency = param.Latency - param.Latency%time.Second
+	}
+	return fmt.Sprintf("[GIN-WEB] %v |%s %3d %s| %13v | %15s | %s %-7s %s %#v\n%s",
+		param.TimeStamp.Format("2006/01/02 - 15:04:05"),
+		statusColor, param.StatusCode, resetColor,
+		param.Latency,
+		param.ClientIP,
+		methodColor, param.Method, resetColor,
+		param.Path,
+		param.ErrorMessge,
+	)
 }
 
 // LoggerWithConfig实例具有配置的Logger中间件。 LoggerWithConfig instance a Logger middleware with config.
 func LoggerWithConfig(conf LoggerConfig) gin_web.HandlerFunc {
 	formatter := conf.Formatter
 	if formatter == nil {
-		return defaultLogFormatter
+		formatter = defaultLogFormatter
+	}
+	out := conf.Output
+	if out == nil {
+		out = gin_web.DefaultWriter
+	}
+	notlogged := conf.SkipPaths
+
+	isTerm := true
+
+	if w, ok := out.(*os.File); !ok || os.Getenv("TERM") == "dumb" || (go_isatty.IsTerminal(w.Fd()) && go_isatty.IsCygwinTerminal(w.Fd())) {
+		isTerm = false
+	}
+
+	var skip map[string]struct{}
+
+	if length := len(notlogged); length > 0 {
+		skip = make(map[string]struct{}, length)
+
+		for _, path := range notlogged {
+			skip[path] = struct{}{}
+		}
+	}
+
+	return func(c *gin_web.Context) {
+		// 开始时间 Start timer
+		start := time.Now()
+		path := c.Request.URL.Path
+		raw := c.Request.URL.RawQuery
+
+		// 流程要求 Process request
+		c.Next()
+
+		// 仅在不跳过路径时记录 Log only when path is not being skipped
+	if  _, ok  := skip[path];!ok{
+		param := LogFormatterParam{
+			Request:  c.Request,
+			isTerm: isTerm,
+			keys: c.Keys
+		}
+		 // 停止时间  stop timer
+		 param.TimeStamp = time.Now()
+		 param.Latency = param.TimeStamp.Sub(start)
+
+		 param.ClientIP = c.ClientIP()
+		 param.Method = c.Request.Method
+		 param.StatusCode = c.Writer.Status()
+		 param.ErrorMessge = c.Errors.ByType(gin_web.ErrorTypePrivate).String()
+
+		}
 	}
 }
 
