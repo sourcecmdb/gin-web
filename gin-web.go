@@ -2,6 +2,7 @@ package gin_web
 
 import (
 	"github.com/sourcecmdb/gin-web/render"
+	"github.com/sourcecmdb/gin-web/utils"
 	"html/template"
 	"sync"
 )
@@ -172,6 +173,7 @@ func (engine *Engine) SetHTMLTemplate(templ *template.Template) {
 	if len(engine.trees) > 0 {
 		debugPrintWARNIGSetHTMLTemplate()
 	}
+	engine.HTMLRender = render.HTMLProduction{Template: templ.Funcs(engine.FuncMap)}
 }
 
 // LoadHTMLGlob加载由glob模式标识的HTML文件 // LoadHTMLGlob loads HTML files identified by glob pattern
@@ -187,4 +189,49 @@ func (engine *Engine) LoadHTMLGlob(prttern string) {
 		return
 	}
 	engine.SetHTMLTemplate(templ)
+}
+
+// LoadHTMLFiles加载HTML文件的一部分 // LoadHTMLFiles loads a slice of HTML files
+//并将结果与HTML渲染器关联。 // and associates the result with HTML renderer.
+func (engine *Engine) LoadHTMLFiles(files ...string) {
+	if IsDebugging() {
+		engine.HTMLRender = render.HTMLDebug{Files: files, FuncMap: engine.FuncMap, Delims: engine.delims}
+		return
+	}
+	templ := template.Must(template.New("").Delims(engine.delims.Left, engine.delims.Right).Funcs(engine.FuncMap).ParseFiles(files...))
+	engine.SetHTMLTemplate(templ)
+}
+
+// SetFuncMap设置用于template.FuncMap的FuncMap。 // SetFuncMap sets the FuncMap used for template.FuncMap.
+func (engine *Engine) SetFuncMap(funcMap template.FuncMap) {
+	engine.FuncMap = funcMap
+}
+
+func (engine *Engine) rebuild404Handlers() {
+	engine.allNoRoute = engine.combineHandlers(engine.noRoute)
+}
+
+func (engine *Engine) rebuild405Handlers() {
+	engine.allNoMethod = engine.combineHandlers(engine.allNoMethod)
+}
+
+// NoRoute为NoRoute添加处理程序。 默认情况下，它返回404代码。// NoRoute adds handlers for NoRoute. It return a 404 code by default.
+func (engine *Engine) NoRoute(handlers ...HandlerFunc) {
+	engine.noRoute = handlers
+	engine.rebuild404Handlers()
+}
+
+func (engine *Engine) addRoute(method, path string, handlers HandlersChain) {
+	utils.Assert1(path[0] == '/', "path must begin with '/' ")
+	utils.Assert1(method != "", "HTTP method can not be empty")
+	utils.Assert1(len(handlers) > 0, "There must be at least one handler")
+
+	debugPrintRoute(method, path, handlers)
+	root := engine.trees.get(method)
+	if root == nil {
+		root = new(node)
+		root.fullPath = "/"
+		engine.trees = append(engine.trees, methodTree{method: method,root: root})
+	}
+	root.addRoute(path,handlers)
 }

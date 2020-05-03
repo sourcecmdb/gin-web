@@ -16,9 +16,15 @@ type HTMLRender interface {
 	Instance(string, interface{}) Render
 }
 
+// HTMLProduction包含模板参考及其delims。 // HTMLProduction contains template reference and its delims.
+type HTMLProduction struct {
+	Template *template.Template
+	Delims   Delims
+}
+
 //HTMLDebug包含模板delims，模式和带有文件列表的功能。 //HTMLDebug contains template delims and pattern and function with file list.
 type HTMLDebug struct {
-	File    []string
+	Files   []string
 	Glob    string
 	Delims  Delims
 	FuncMap template.FuncMap

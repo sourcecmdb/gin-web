@@ -34,3 +34,14 @@ type IRouter interface {
 	IRoutes
 	Group(string, ...http.HandlerFunc) *RouterGroup
 }
+
+func (group *RouterGroup) combineHandlers(handlers HandlersChain) HandlersChain{
+	finalSzie := len(group.Handlers) +len(handlers)
+	if finalSzie >= int(abortIndex){
+		panic("too many handlers")
+	}
+	mergedHandlers := make(HandlersChain,finalSzie)
+	copy(mergedHandlers,group.Handlers)
+	copy(mergedHandlers[len(group.Handlers):],handlers)
+	return mergedHandlers
+}

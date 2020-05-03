@@ -2,6 +2,7 @@ package gin_web
 
 import (
 	"fmt"
+	"github.com/sourcecmdb/gin-web/utils"
 	"html/template"
 	"runtime"
 	"strconv"
@@ -45,19 +46,41 @@ func debugPrintWARWINGDefault() {
 	debugPrint(`[警告]使用已连接Logger和Recovery中间件创建Engine实例  [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached`)
 }
 
-func debugPrintLoadTemplate(tmpl *template.Template){
-	is IsDebugging(){
+func debugPrintLoadTemplate(tmpl *template.Template) {
+	IsDebugging()
+	{
 		var buf strings.Builder
-		for _,tmpl := range tmpl.Templates(){
+		for _, tmpl := range tmpl.Templates() {
 			buf.WriteString("\t- ")
 			buf.WriteString(tmpl.Name())
 			buf.WriteString("\n")
 		}
-		debugPrint("Loaded HTML Templates (%d):\n%s\n",len(tmpl.Templates()),buf.String())
+		debugPrint("Loaded HTML Templates (%d):\n%s\n", len(tmpl.Templates()), buf.String())
 	}
 }
 
-func debugPrintWARNIGSetHTMLTemplate(){
-	debugPrint(`
+func debugPrintWARNIGSetHTMLTemplate() {
+	debugPrint(`[WARNING] Since SetHTMLTemplate() is NOT thread-safe. It should only be calledat initialization. ie. before any route is registered or the router is listening in a socket:
+
+	router := gin.Default()
+	router.SetHTMLTemplate(template) // << good place
+[警告]由于SetHTMLTemplate（）不是线程安全的。 它只能被称为在初始化时。 即。 在注册任何路由或路由器在套接字中侦听之前：
+路由器：= gin.Default（）
+router.SetHTMLTemplate（template）// <<好地方
 `)
+}
+
+//DebugPrintRouteFunc指示调试日志输出格式。  //DebugPrintRouteFunc indicates debug log output format.
+var DebugPrintRouteFunc func(httpMethod, absolutePath, handlerName string, nuHandlers int)
+
+func debugPrintRoute(httpMethod, absolutePath string, handlers HandlersChain) {
+	if IsDebugging() {
+		nuHandlers := len(handlers)
+		handlerName := utils.NameOfFunction(handlers.Last())
+		if DebugPrintRouteFunc == nil {
+			debugPrint("%-6s %-25s --> %s (%d hanlders)\n", httpMethod, absolutePath, handlerName, nuHandlers)
+		} else {
+			DebugPrintRouteFunc(httpMethod, absolutePath, handlerName, nuHandlers)
+		}
+	}
 }
