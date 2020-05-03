@@ -154,3 +154,37 @@ func Default() *Engine {
 func (engine *Engine) allocateContext() *Context {
 	return &Context{engine: engine, KeysMutex: &sync.RWMutex{}}
 }
+
+//Delims左右设置模板delims，并返回Engine实例。 // Delims sets template left and right delims and returns a Engine instance.
+func (engine *Engine) Delims(left, right string) *Engine {
+	engine.delims = render.Delims{Left: left, Right: right}
+	return engine
+}
+
+//SecureJsonPrefix设置Context.SecureJSON中使用的secureJsonPrefix。 SecureJsonPrefix sets the secureJsonPrefix used in Context.SecureJSON.
+func (engine *Engine) SecureJsonPrefix(prefix string) *Engine {
+	engine.secureJsonPrefix = prefix
+	return engine
+}
+
+// SetHTMLTemplate将模板与HTML渲染器关联。 // SetHTMLTemplate associate a template with HTML renderer.
+func (engine *Engine) SetHTMLTemplate(templ *template.Template) {
+	if len(engine.trees) > 0 {
+		debugPrintWARNIGSetHTMLTemplate()
+	}
+}
+
+// LoadHTMLGlob加载由glob模式标识的HTML文件 // LoadHTMLGlob loads HTML files identified by glob pattern
+//并将结果与HTML渲染器关联// and associates the result with HTML renderer.
+func (engine *Engine) LoadHTMLGlob(prttern string) {
+	left := engine.delims.Left
+	right := engine.delims.Right
+	templ := template.Must(template.New("").Delims(left, right).Funcs(engine.FuncMap).ParseGlob(prttern))
+
+	if IsDebugging() {
+		debugPrintLoadTemplate(templ)
+		engine.HTMLRender = render.HTMLDebug{Glob: prttern, FuncMap: engine.FuncMap, Delims: engine.delims}
+		return
+	}
+	engine.SetHTMLTemplate(templ)
+}
