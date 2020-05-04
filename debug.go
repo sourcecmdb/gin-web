@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/sourcecmdb/gin-web/utils"
 	"html/template"
+	"io"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -11,10 +13,13 @@ import (
 
 const gin_webSupporMinGoVer = 0
 
+//DefaultErrorWriter是GIn-Web用于调试错误的默认io.Writer  DefaultErrorWriter is the default io.Writer used by GIn-web to debug errors
+var DefaultErrorWriter io.Writer = os.Stderr
+
 func IsDebugging() bool {
 	return ginMode == debugCode
 }
-func debugPrint(format string, values ...interface{}) {
+func DebugPrint(format string, values ...interface{}) {
 	if IsDebugging() {
 		if !strings.HasSuffix(format, "\n") {
 			format += "\n"
@@ -33,7 +38,7 @@ func getMinVer(v string) (uint64, error) {
 }
 
 func debugPrintWARWINGNew() {
-	debugPrint(`[警告]以“调试”模式运行。 在生产中切换到“发布”模式。[WARNING] Running in "debug" mode. Switch to "release" mode in production.
+	DebugPrint(`[警告]以“调试”模式运行。 在生产中切换到“发布”模式。[WARNING] Running in "debug" mode. Switch to "release" mode in production.
   -使用环境：export GIN_MODE = release - using env:	export GIN_MODE=release
    -使用代码：gin.SetMode（gin.ReleaseMode） - using code:	gin.SetMode(gin.ReleaseMode)
 `)
@@ -41,9 +46,9 @@ func debugPrintWARWINGNew() {
 
 func debugPrintWARWINGDefault() {
 	if v, e := getMinVer(runtime.Version()); e == nil && v <= gin_webSupporMinGoVer {
-		debugPrint(` [警告]现在，杜松子酒需要Go 1.11或更高版本，而不久之后将需要Go 1.12 [WARNING] Now Gin requires Go 1.11 or later and Go 1.12 will be required soon`)
+		DebugPrint(` [警告]现在，杜松子酒需要Go 1.11或更高版本，而不久之后将需要Go 1.12 [WARNING] Now Gin requires Go 1.11 or later and Go 1.12 will be required soon`)
 	}
-	debugPrint(`[警告]使用已连接Logger和Recovery中间件创建Engine实例  [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached`)
+	DebugPrint(`[警告]使用已连接Logger和Recovery中间件创建Engine实例  [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached`)
 }
 
 func debugPrintLoadTemplate(tmpl *template.Template) {
@@ -55,12 +60,12 @@ func debugPrintLoadTemplate(tmpl *template.Template) {
 			buf.WriteString(tmpl.Name())
 			buf.WriteString("\n")
 		}
-		debugPrint("Loaded HTML Templates (%d):\n%s\n", len(tmpl.Templates()), buf.String())
+		DebugPrint("Loaded HTML Templates (%d):\n%s\n", len(tmpl.Templates()), buf.String())
 	}
 }
 
 func debugPrintWARNIGSetHTMLTemplate() {
-	debugPrint(`[WARNING] Since SetHTMLTemplate() is NOT thread-safe. It should only be calledat initialization. ie. before any route is registered or the router is listening in a socket:
+	DebugPrint(`[WARNING] Since SetHTMLTemplate() is NOT thread-safe. It should only be calledat initialization. ie. before any route is registered or the router is listening in a socket:
 
 	router := gin.Default()
 	router.SetHTMLTemplate(template) // << good place
@@ -78,9 +83,17 @@ func debugPrintRoute(httpMethod, absolutePath string, handlers HandlersChain) {
 		nuHandlers := len(handlers)
 		handlerName := utils.NameOfFunction(handlers.Last())
 		if DebugPrintRouteFunc == nil {
-			debugPrint("%-6s %-25s --> %s (%d hanlders)\n", httpMethod, absolutePath, handlerName, nuHandlers)
+			DebugPrint("%-6s %-25s --> %s (%d hanlders)\n", httpMethod, absolutePath, handlerName, nuHandlers)
 		} else {
 			DebugPrintRouteFunc(httpMethod, absolutePath, handlerName, nuHandlers)
+		}
+	}
+}
+
+func debugPrintError(err error) {
+	if err != nil {
+		if IsDebugging() {
+			fmt.Fprintf(DefaultErrorWriter, "[GIN_WEB-debug][ERROR] %v\n", err)
 		}
 	}
 }

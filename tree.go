@@ -216,8 +216,16 @@ func (n *node) incrementChildPrio(pos int) int {
 	//调整位置（移到前面）	// adjust position (move to front)
 	newPos := pos
 	for ; newPos > 0 && cs[newPos-1].priority < prio; newPos-- {
-
+		//交换节点位置 // Swap node positions
+		cs[newPos-1], cs[newPos] = cs[newPos], cs[newPos-1]
 	}
+	//建立新的索引字串	// build new index char string
+	if newPos != pos {
+		n.indices = n.indices[:newPos] + //未更改的前缀，可能为空 // unchanged prefix , might be empty
+			n.indices[pos:pos+1] + // 我们移动的索引字符 the index char we move
+			n.indices[newPos:pos] + n.indices[pos+1:] // 在“ pos”处不带字符的休息 rest without char at 'pos'
+	}
+	return newPos
 }
 
 // addRoute将具有给定句柄的节点添加到路径。 // addRoute adds a node with the given handle to the path.
@@ -321,10 +329,30 @@ walk:
 				if c == n.indices[i] {
 					parentFullPathIndex += len(n.path)
 					i = n.incrementChildPrio(i)
-
+					n = n.children[i]
+					continue walk
 				}
 			}
+			//否则插入   otherwise insert it
+			if c != ':' && c != '*' {
+				//[] byte用于正确的Unicode字符转换。 看到＃65  []byte for proper unicode char conversion. see #65
+				n.indices += string([]byte{c})
+				child := &node{
+					maxParams: numParams,
+					fullPath:  fullPath,
+				}
+				n.children = append(n.children, child)
+				n.incrementChildPrio(len(n.indices) - 1)
+				n = child
+			}
+			n.insertChild(numParams, path, fullPath, handlers)
+			return
 		}
-
+		// 否则处理当前节点 otherwise and handle to current node
+		if n.handlers != nil {
+			panic("处理程序已经为路径注册 handlers are already registered for path '" + fullPath + "'")
+		}
+		n.handlers = handlers
+		return
 	}
 }

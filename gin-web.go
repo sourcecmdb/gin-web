@@ -231,7 +231,42 @@ func (engine *Engine) addRoute(method, path string, handlers HandlersChain) {
 	if root == nil {
 		root = new(node)
 		root.fullPath = "/"
-		engine.trees = append(engine.trees, methodTree{method: method,root: root})
+		engine.trees = append(engine.trees, methodTree{method: method, root: root})
 	}
-	root.addRoute(path,handlers)
+	root.addRoute(path, handlers)
+}
+
+func iterate(path, method string, routes Routesinfo, root *node) Routesinfo {
+	path += root.path
+	if len(root.handlers) > 0 {
+		handlerFunc := root.handlers.Last()
+		routes = append(routes, RouteInfo{
+			Method:      method,
+			Path:        path,
+			Handler:     utils.NameOfFunction(handlerFunc),
+			HandlerFunc: handlerFunc,
+		})
+	}
+	for _, child := range root.children {
+		routes = iterate(path, method, routes, child)
+	}
+	return routes
+}
+
+// 路线返回一部分已注册的路线，其中包括一些有用的信息，例如： Routes returns a slice of registered routes including some userful information such as:
+// http方法，路径和处理程序名称。 the http method , path and the handler name.
+func (engine *Engine) Routes() (routes Routesinfo) {
+	for _, tree := range engine.trees {
+		routes = iterate("", tree.method, routes, tree.root)
+	}
+	return routes
+}
+
+//运行将路由器附加到http.Server并开始侦听和处理HTTP请求 // Run attaches the router to a http.Server and starts listening and serving HTTP requests
+//这是http.ListenAndSeve（addr，router）的快捷方式 // It is a shortcut for http.ListenAndSeve(addr,router)
+//注意：除非发生错误，否则此方法将无限期阻止调用goroutine // Note: this method will block the calling goroutine indefinitely unless an error happens
+func (engine *Engine) Run(addr ...string) (err error) {
+	defer func() { debugPrintError(err) }()
+
+	address := resolveAddress(addr)
 }
