@@ -211,4 +211,5 @@ func LoggerWithConfig(conf LoggerConfig) HandlerFunc {
 //默认情况下gin.DefaultWriter = os.Stdout。 By default gin.DefaultWriter = os.Stdout.
 func Logger() HandlerFunc {
 	return LoggerWithConfig(LoggerConfig{})
+
 }

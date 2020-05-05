@@ -14,9 +14,9 @@ const abortIndex int8 = math.MaxInt8 / 2
 // 上下文是是最重要的部分。它允许我们在中间件之间的传递变量
 // 管理流程 例如验证请求的json并呈现json响应
 type Context struct {
-	writername responesWriter
-	Request    *http.Request
-	Writer     ResponesWriter
+	writermem responesWriter
+	Request   *http.Request
+	Writer    ResponesWriter
 
 	Params   Params
 	handlers HandlersChain
@@ -120,4 +120,18 @@ func (c *Context) Abort() {
 //有关更多详细信息，请参见Context.Error（）。 // See Context.Error() for more details.
 func (c *Context) AbortWithStatus(code int) {
 	c.Status(code)
+}
+
+func (c *Context) reset() {
+	c.Writer = &c.writermem
+	c.Params = c.Params[0:0]
+	c.handlers = nil
+	c.index = -1
+	c.KeysMutex = &sync.RWMutex{}
+	c.fullPath = ""
+	c.Keys = nil
+	c.Errors = c.Errors[0:0]
+	c.Accepted = nil
+	c.queryCache = nil
+	c.formCache = nil
 }

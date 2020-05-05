@@ -1,9 +1,13 @@
 package gin_web
 
 import (
+	"fmt"
 	"github.com/sourcecmdb/gin-web/render"
 	"github.com/sourcecmdb/gin-web/utils"
 	"html/template"
+	"net"
+	"net/http"
+	"os"
 	"sync"
 )
 
@@ -268,5 +272,85 @@ func (engine *Engine) Routes() (routes Routesinfo) {
 func (engine *Engine) Run(addr ...string) (err error) {
 	defer func() { debugPrintError(err) }()
 
-	address := resolveAddress(addr)
+	address := utils.ResolverAddress(addr)
+	DebugPrint("监听并提供HTTP服务 Listening and serving HTTP on %s\n", address)
+	err = http.ListenAndServe(address, engine)
+	return
+}
+
+// RunTLS将路由器附加到http.Server，并开始侦听和处理HTTPS（安全）请求。 // RunTLS attaches the router to a http.Server and starts listening and serving HTTPS (secure) requests.
+//这是http.ListenAndServeTLS（addr，certFile，keyFile，router）的快捷方式 // It is a shortcut for http.ListenAndServeTLS(addr, certFile, keyFile, router)
+//注意：除非发生错误，否则此方法将无限期阻止调用goroutine。 // Note: this method will block the calling goroutine indefinitely unless an error happens.
+func (engine *Engine) RunTLS(addr, certFile, keyFile string) (err error) {
+	DebugPrint("监听并提供HTTPS服务 Listening and serving HTTPS on %s\n", addr)
+	defer func() { debugPrintError(err) }()
+	err = http.ListenAndServeTLS(addr, certFile, keyFile, engine)
+	return
+}
+
+// RunUnix将路由器附加到http.Server并开始侦听和处理HTTP请求 // RunUnix attaches the router to a http.Server and starts listening and serving HTTP requests
+//通过指定的Unix套接字（即文件）。 // through the specified unix socket (ie. a file).
+//注意：除非发生错误，否则此方法将无限期阻止调用goroutine。// Note: this method will block the calling goroutine indefinitely unless an error happens.
+func (engine *Engine) RunUnix(file string) (err error) {
+	DebugPrint("监听并提供HTTP服务 Listening and serving  HTTP on unix:/%s", file)
+	defer func() { debugPrintError(err) }()
+	listener, err := net.Listen("nuix", file)
+	if err != nil {
+		return
+	}
+	defer listener.Close()
+	defer os.Remove(file)
+
+	err = http.Serve(listener, engine)
+	return
+}
+
+// RunListener将路由器附加到http.Server并开始侦听和处理HTTP请求 // RunListener attaches the router to a http.Server and starts listening and serving HTTP requests
+//通过指定的net.Listener // through the specified net.Listener
+func (engine *Engine) RunListener(listener net.Listener) (err error) {
+	DebugPrint("在侦听器上侦听和服务HTTP与address @％s绑定的内容 Listening and serving HTTP on listener what's bind with address@%s", listener.Addr())
+	defer func() { debugPrintError(err) }()
+	err = http.Serve(listener, engine)
+	return
+}
+
+// RunFd将路由器附加到http.Server并开始侦听和处理HTTP请求 // RunFd attaches the router to a http.Server and starts listening and serving HTTP requests
+//通过指定的文件描述符。  // through the specified file descriptor.
+//注意：除非发生错误，否则此方法将无限期阻止调用goroutine。 // Note: this method will block the calling goroutine indefinitely unless an error happens.
+func (engine *Engine) RunFd(fd int) (err error) {
+	DebugPrint("Listening and serving HTTP on fd@%d", fd)
+	defer func() { debugPrintError(err) }()
+
+	f := os.NewFile(uintptr(fd), fmt.Sprintf("fd@%d", fd))
+	listerner, err := net.FileListener(f)
+	if err != nil {
+		return
+	}
+	defer listerner.Close()
+	err = engine.RunListener(listerner)
+	return
+}
+
+func (engine *Engine) handleHTTPRequest(c *Context) {
+	httpMethod := c.Request.Method
+	rPath := c.Request.URL.Path
+	unescape := false
+	if engine.UseRawPath && len(c.Request.URL.RawPath) > 0 {
+		rPath = c.Request.URL.RawPath
+		unescape = engine.UnescapePathValues
+	}
+	if engine.RemoveExtraSlash {
+		rPath = cleanPath(rPath)
+	}
+	// find root of the reee for the given HTTP method
+
+}
+
+// ServeHTTP符合http.Handler接口。 // ServeHTTP conforms to the http.Handler interface.
+func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	c := engine.pool.Get().(*Context)
+	c.writermem.reset(w)
+	c.Request = req
+	c.reset()
+	engine.handleHTTPRequest(c)
 }

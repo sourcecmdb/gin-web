@@ -1,6 +1,14 @@
 package gin_web
 
-import "net/http"
+import (
+	"io"
+	"net/http"
+)
+
+const (
+	noWritten     = -1
+	defaultStatus = http.StatusOK
+)
 
 type ResponesWriter interface {
 	http.ResponseWriter
@@ -31,3 +39,9 @@ type responesWriter struct {
 }
 
 var _ ResponesWriter = &responesWriter{}
+
+func (w *responesWriter) reset(writer http.ResponseWriter) {
+	w.ResponseWriter = writer
+	w.size = noWritten
+	w.status = defaultStatus
+}
