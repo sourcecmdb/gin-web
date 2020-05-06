@@ -2,12 +2,14 @@ package gin_web
 
 import (
 	"fmt"
+	"github.com/sourcecmdb/gin-web/internal/bytesconv"
 	"github.com/sourcecmdb/gin-web/render"
 	"github.com/sourcecmdb/gin-web/utils"
 	"html/template"
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"sync"
 )
 
@@ -331,6 +333,64 @@ func (engine *Engine) RunFd(fd int) (err error) {
 	return
 }
 
+func redirectRequest(c *Context) {
+	req := c.Request
+	rPath := req.URL.Path
+	rURL := req.URL.String()
+
+	code := http.StatusMovedPermanently //永久重定向，使用GET方法请求 // permanent redirect, request with GET method
+	if req.Method != http.MethodGet {
+		code = http.StatusTemporaryRedirect
+	}
+	DebugPrint("redirecting requess %d:%s --> %s", code, rPath, rURL)
+	http.Redirect(c.Writer, req, rURL, code)
+	c.writermem.WriteHeaderNow()
+}
+
+func redirectTrailingSlash(c *Context) {
+	req := c.Request
+	p := req.URL.Path
+	if prefix := path.Clean(c.Request.Header.Get("X-Forwarded-Prefix")); prefix != "." {
+		p = prefix + "/" + req.URL.Path
+	}
+	req.URL.Path = p + "/"
+	if length := len(p); length > 1 && p[length-1] == '/' {
+		req.URL.Path = p[:length-1]
+	}
+	redirectRequest(c)
+}
+
+func redirectFixedPath(c *Context, root *node, trailingSlash bool) bool {
+	req := c.Request
+	rPath := req.URL.Path
+
+	if fixedPath, ok := root.findCaseInsensitivePath(cleanPath(rPath), trailingSlash); ok {
+		req.URL.Path = bytesconv.BytesToString(fixedPath)
+		redirectRequest(c)
+		return true
+	}
+	return false
+}
+
+var mimePlain = []string(MIMEPlain)
+
+func serveError(c *Context, code int, defaultMassags []byte) {
+	c.writermem.status = code
+	c.Next()
+	if c.writermem.Written() {
+		return
+	}
+	if c.writermem.Status() == code {
+		c.writermem.Header()["Content-Type"] = mimePlain
+		_, err := c.Writer.Write(defaultMassags)
+		if err != nil {
+			DebugPrint("connot write message to writer during serve error: %V", err)
+		}
+		return
+	}
+	c.writermem.WriteHeaderNow()
+}
+
 func (engine *Engine) handleHTTPRequest(c *Context) {
 	httpMethod := c.Request.Method
 	rPath := c.Request.URL.Path
@@ -342,8 +402,50 @@ func (engine *Engine) handleHTTPRequest(c *Context) {
 	if engine.RemoveExtraSlash {
 		rPath = cleanPath(rPath)
 	}
-	// find root of the reee for the given HTTP method
+	//查找给定HTTP方法的reee的根 // find root of the reee for the given HTTP method
+	t := engine.trees
+	for i, tl := 0, len(t); i < tl; i++ {
+		if t[i].method != httpMethod {
+			continue
+		}
 
+		root := t[i].root
+		//在树中查找路线 // Find route in  tree
+		value := root.getValue(rPath, c.Params, unescape)
+		if value.handlers != nil {
+			c.handlers = value.handlers
+			c.Params = value.params
+			c.fullPath = value.fullPath
+			c.Next()
+			c.writermem.WriteHeaderNow()
+			return
+		}
+
+		if httpMethod != "CONNECT" && rPath != "/" {
+			if value.tsr && engine.RedirectTrailignslash {
+				redirectTrailingSlash(c)
+				return
+			}
+			if engine.RedirectFixedPath && redirectFixedPath(c, root, engine.RedirectFixedPath) {
+				return
+			}
+		}
+		break
+	}
+	if engine.HandleMethodNotAllowed {
+		for _, tree := range engine.trees {
+			if tree.method == httpMethod {
+				continue
+			}
+			if value := tree.root.getValue(rPath, nil, unescape); value.handlers != nil {
+				c.handlers = engine.allNoMethod
+				serveError(c, http.StatusMethodNotAllowed, default405Body)
+				return
+			}
+		}
+	}
+	c.handlers = engine.allNoRoute
+	serveError(c, http.StatusNotFound, default404Body)
 }
 
 // ServeHTTP符合http.Handler接口。 // ServeHTTP conforms to the http.Handler interface.

@@ -1,7 +1,6 @@
 package gin_web
 
 import (
-	"io"
 	"net/http"
 )
 
@@ -44,4 +43,18 @@ func (w *responesWriter) reset(writer http.ResponseWriter) {
 	w.ResponseWriter = writer
 	w.size = noWritten
 	w.status = defaultStatus
+}
+
+func (w *responesWriter) Written() bool {
+	return w.size != noWritten
+}
+func (w *responesWriter) WriteHeaderNow() {
+	if !w.Written() {
+		w.size = 0
+		w.ResponseWriter.WriteHeader(w.status)
+	}
+}
+
+func (w *responesWriter) Status() int {
+	return w.status
 }

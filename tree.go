@@ -1,6 +1,10 @@
 package gin_web
 
-import "strings"
+import (
+	"net/url"
+	"strings"
+	"unicode"
+)
 
 // Param 参数是单个URL参数，由键和值组成
 type Param struct {
@@ -355,4 +359,256 @@ walk:
 		n.handlers = handlers
 		return
 	}
+}
+
+// nodeValue保存（* Node）.getValue方法的返回值 // nodeValue holds return values of (*Node).getValue method
+type nodeValue struct {
+	handlers HandlersChain
+	params   Params
+	tsr      bool
+	fullPath string
+}
+
+// getValue返回在给定路径（键）中注册的句柄。 的值 // getValue returns the handle registered with the given path (key). The values of
+//通配符将保存到地图。 // wildcards are saved to a map.
+//如果找不到句柄，则建议使用TSR（斜线重定向） // If no handle can be found, a TSR (trailing slash redirect) recommendation is
+//如果句柄存在且带有一个额外的（没有）尾部斜杠 // made if a handle exists with an extra (without the) trailing slash for the
+//给定的路径. // given path.
+func (n *node) getValue(path string, po Params, unescape bool) (value nodeValue) {
+	value.params = po
+walk: //外循环使树走 // outer loop for walking the tree
+	for {
+		prefix := n.path
+		if path == prefix {
+			//我们应该到达包含该句柄的节点。			// We should have reached the node containing the handle.
+			//检查此节点是否已注册句柄。			// Check if this node has a handle registered.
+			if value.handlers = n.handlers; value.handlers != nil {
+				value.fullPath = n.fullPath
+				return
+			}
+
+			if path == "/" && n.wildChild && n.nType != root {
+				value.tsr = true
+				return
+			}
+
+			//未找到句柄。 检查此路径的句柄+ a	// No handle found. Check if a handle for this path + a
+			//存在尾部斜杠用于尾部斜杠推荐。	// trailing slash exists for trailing slash recommendation
+			indices := n.indices
+			for i, max := 0, len(indices); i < max; i++ {
+				if indices[i] == '/' {
+					n = n.children[i]
+					value.tsr = (len(n.path) == 1 && n.handlers != nil) || (n.nType == catchAll && n.children[0].handlers != nil)
+					return
+				}
+			}
+			return
+		}
+		if len(path) > len(prefix) && path[:len(prefix)] == prefix {
+			path = path[len(prefix):]
+			//如果此节点没有通配符（param或catchAll）	// If this node does not have a wildcard (param or catchAll)
+			//子节点，我们可以仅查找下一个子节点并继续	// child,  we can just look up the next child node and continue
+			//从树上走下来	// to walk down the tree
+			if !n.wildChild {
+				c := path[0]
+				indices := n.indices
+				for i, max := 0, len(n.indices); i < max; i++ {
+					if c == indices[i] {
+						n = n.children[i]
+						continue walk
+					}
+				}
+				// 没有发现。	// Nothing found.
+				//我们建议您重定向到相同的网址，而不用	// We can recommend to redirect to the same URL without a
+				//如果该路径存在叶子，则以斜杠结尾。	// trailing slash if a leaf exists for that path.
+				value.tsr = path == "/" && n.handlers != nil
+				return
+			}
+			//处理通配符子级	// handle wildcard child
+			n = n.children[0]
+			switch n.nType {
+			case param:
+				//查找参数和（'/或路径末尾）	// find param and (either '/ or path end)
+				end := 0
+				for end < len(path) && path[end] != '/' {
+					end++
+				}
+
+				//保存参数值	// save param value
+				if acp(value.params) < int(n.maxParams) {
+					value.params = make(Params, 0, n.maxParams)
+				}
+				i := len(value.params)
+				value.params = value.params[:i+1] //在预分配的容量内扩展切片 // expand slice within preallocated capacity
+				value.params[i].Key = n.path[1:]
+				val := path[:end]
+				if unescape {
+					var err error
+					if value.params[i].Value, err = url.QueryUnescape(val); err != nil {
+						value.params[i].Value = val //回退，以防出现错误 // fallback, in case of error
+					}
+				} else {
+					value.params[i].Value = val
+				}
+
+				//我们需要更深入！	// we need to go deeper!
+				if end < len(path) {
+					if len(n.children) > 0 {
+						path = path[end:]
+						n = n.children[0]
+						continue walk
+					}
+					// ...但是我们不能	//... but we can't
+					value.tsr = len(path) == end+1
+					return
+				}
+
+				if value.handlers = n.handlers; value.handlers != nil {
+					value.fullPath = n.fullPath
+					return
+				}
+				if len(n.children) == 1 {
+					//未找到句柄。 检查此路径的句柄+ a	// No handle found. Check if a handle for this path + a
+					//对于TSR建议，存在斜杠		// trailing slash exists for TSR recommendation
+					n = n.children[0]
+					value.tsr = n.path == "/" && n.handlers != nil
+				}
+				return
+			case catchAll:
+				// save param value
+				if cap(value.params) < int(n.maxParams) {
+					value.params = make(Params, 0, n.maxParams)
+				}
+				i := len(value.params)
+				value.params = value.params[:i+1] //在预分配的容量内扩展切片 // expand slice within preallocated capacity
+				value.params[i].Key = n.path[2:]
+
+				if unescape {
+					var err error
+					if value.params[i].Value, err = url.QueryUnescape(path); err != nil {
+						value.params[i].Value = path //回退，以防出现错误 // fallback, in case of error
+					}
+				} else {
+					value.params[i].Value = path
+				}
+				value.handlers = n.handlers
+				value.fullPath = n.fullPath
+				return
+			default:
+				panic("无效的节点类型 invalid node Type")
+			}
+		}
+		// 没有发现。 我们建议您使用		// Nothing found. We can recommend to redirect to the same URL with an
+		//如果该路径存在叶子，则使用额外的尾部斜杠		// extra trailing slash if a leaf exists for that path
+		value.tsr = (path == "/") || (len(prefix) == len(path)+1 && prefix[len(path)] == '/' && path == prefix[:len(prefix)-1] && n.handlers != nil)
+		return
+
+	}
+}
+
+// findCaseInsensitivePath对给定路径进行不区分大小写的查找，并尝试查找处理程序。 // findCaseInsensitivePath makes a case-insensitive lookup of the given path and tries to find a handler.
+//也可以选择修复斜杠。 // It can optionally also fix trailing slashes.
+//返回经过大小写校正的路径和一个布尔值，指示是否查找 // It returns the case-corrected path and a bool indicating whether the lookup
+// 那是成功的。// was successful.
+func (n *node) findCaseInsensitivePath(path string, fixTrailingSlash bool) (ciPath []byte, found bool) {
+	ciPath = make([]byte, 0, len(path)+1) //预分配足够的内存 // preallocate enough memory
+
+	//外循环使树走 // outer loop for wlking the tree
+	for len(path) >= len(n.path) && strings.EqualFold(path[:len(n.path)], n.path) {
+		path = path[len(n.path):]
+		ciPath = append(ciPath, n.path...)
+
+		if len(path) == 0 {
+			//我们应该到达包含该句柄的节点。		// We should have reached the node containing the handle.
+			//检查此节点是否已注册句柄。		// Check if this node has a handle registered.
+			if n.handlers != nil {
+				return ciPath, true
+			}
+
+			//未找到句柄。	// No handle found.
+			//尝试通过添加斜杠来修复路径	// Try to fix the path by adding a trailing slash
+			if fixTrailingSlash {
+				for i := 0; i < len(n.indices); i++ {
+					if n.indices[i] == '/' {
+						n = n.children[i]
+						if (len(n.path) == 1 && n.handlers != nil) || (n.nType == catchAll && n.children[0].handlers != nil) {
+							return append(ciPath, '/'), true
+						}
+						return
+					}
+				}
+			}
+			return
+		}
+		//如果此节点没有通配符（param或catchAll）子代，	// If this node does not have a wildcard (param or catchAll) child,
+		//我们可以只查找下一个子节点，然后继续向下走	// we can just look up the next child node and continue to walk down
+		// 那个树	// the tree
+
+		if !n.wildChild {
+			r := unicode.ToLower(rune(path[0]))
+			for i, index := range n.indices {
+
+				//必须使用递归方法，因为索引和	// must use recursive approach since both index and
+				// ToLower（index）可能存在。 我们必须检查两者。// ToLower(index) could exist. We must check both.
+				if r == unicode.ToLower(index) {
+					out, found := n.children[i].findCaseInsensitivePath(path, fixTrailingSlash)
+					if found {
+						return append(ciPath, out...), true
+					}
+				}
+			}
+
+			// 没有发现。 我们建议您重定向到相同的URL// Nothing found. We can recommend to redirect to the same URL
+			//如果该路径存在叶子，则不带斜杠	// without a trailing slash if a leaf exists for that path
+			found = fixTrailingSlash && path == "/" && n.handlers != nil
+			return
+		}
+
+		n = n.children[0]
+		switch n.nType {
+		case param:
+			//查找参数和（'/或路径末尾）	// find param and (either '/ or path end)
+			end := 0
+			for end < len(path) && path[end] != '/' {
+				end++
+			}
+			//将参数值添加到不区分大小写的路径	// add param value to case insensitive path
+			ciPath = append(ciPath, path[:end]...)
+
+			//我们需要更深入！ //we need to go deeper!
+			if fixTrailingSlash && len(path) == end+1 {
+				return ciPath, true
+			}
+			return
+
+			if n.handlers != nil {
+				return ciPath, true
+			}
+			if fixTrailingSlash && len(n.children) == 1 {
+				//未找到句柄。 检查此路径的句柄+ a	// No handle found. Check if a handle for this path + a
+				//存在斜杠	// trailing slash exists
+				n = n.children[0]
+				if n.path == "/" && n.handlers != nil {
+					return append(ciPath, '/'), true
+				}
+			}
+			return
+		case catchAll:
+			return append(ciPath, path...), true
+		default:
+			panic("无效的节点类型 invalid node type")
+		}
+	}
+
+	// 没有发现。 // Nothing found.
+	//尝试通过添加/删除尾部斜杠来修复路径	// Try to fix the path by adding / removing a trailing slash
+	if fixTrailingSlash {
+		if path == "/" {
+			return ciPath, true
+		}
+		if len(path)+1 == len(n.path) && n.path[len(path)] == '/' && strings.EqualFold(path, n.path[:len(path)]) && n.handlers != nil {
+			return append(ciPath, n.path...), true
+		}
+	}
+	return
 }

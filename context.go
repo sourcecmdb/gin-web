@@ -1,12 +1,18 @@
 package gin_web
 
 import (
+	"github.com/sourcecmdb/gin-web/binding"
 	"math"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
+)
+
+//最常见的数据格式的Content-Type MIME // Content-Type MIME of the most common data formats
+const (
+	MIMEPlain = binding.MIMEPlain
 )
 
 const abortIndex int8 = math.MaxInt8 / 2
