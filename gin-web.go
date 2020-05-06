@@ -455,4 +455,5 @@ func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	c.Request = req
 	c.reset()
 	engine.handleHTTPRequest(c)
+	engine.pool.Put(c)
 }

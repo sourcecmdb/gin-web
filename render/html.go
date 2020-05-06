@@ -29,3 +29,21 @@ type HTMLDebug struct {
 	Delims  Delims
 	FuncMap template.FuncMap
 }
+
+//HTML包含模板引用及其给定接口对象的名称。  HTML contans template reference and its name with given interface object.
+type HTML struct {
+	Template *template.Template
+	Name     string
+	Data     interface{}
+}
+
+var htmlContentType = []string{"text/html; charset=utf-8"}
+
+// 实例（HTML生产）返回一个实现Render接口的HTML实例。  // Instanace (HTMLProduction) returns an HTML instance which it realizes Render interface.
+func (r HTMLProduction) Instanace(name string, data interface{}) Render {
+	return HTML{
+		Template: r.Template,
+		Name:     name,
+		Data:     data,
+	}
+}

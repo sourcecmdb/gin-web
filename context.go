@@ -2,6 +2,7 @@ package gin_web
 
 import (
 	"github.com/sourcecmdb/gin-web/binding"
+	"github.com/sourcecmdb/gin-web/render"
 	"math"
 	"net"
 	"net/http"
@@ -140,4 +141,40 @@ func (c *Context) reset() {
 	c.Accepted = nil
 	c.queryCache = nil
 	c.formCache = nil
+}
+
+// bodyAllowedForStatus is a copy of http.bodyAllowedForStatus non-exported function
+func bodyAllowedForStatus(status int) bool {
+	switch {
+	case status >= 100 && status <= 199:
+		return false
+	case status == http.StatusNoContent:
+		return false
+	case status == http.StatusNotModified:
+		return false
+	}
+	return true
+}
+
+// Render writes the response headers and calls render .Render to render data.
+func (c *Context) Render(code int, r render.Render) {
+	c.Status(code)
+
+	if !bodyAllowedForStatus(code) {
+		r.WriteContentType(c.Writer)
+		c.Writer.WriteHeaderNow()
+		return
+	}
+
+	if err := r.Render(c.Writer); err != nil {
+		panic(err)
+	}
+}
+
+// HTML呈现由其文件名指定的HTTP模板。 // HTML renders the HTTP template specified by its file name.
+//它还会更新HTTP代码，并将Content-Type设置为“ text / html // It also updates the HTTP code and sets the Content-Type as "text/html".
+// See http://golang.org/doc/articles/wiki/
+func (c *Context) HTML(code int, name string, obj interface{}) {
+	instance := c.engine.HTMLRender.Instance(name, obj)
+	c.Render(code, instance)
 }
