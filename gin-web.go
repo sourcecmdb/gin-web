@@ -372,7 +372,7 @@ func redirectFixedPath(c *Context, root *node, trailingSlash bool) bool {
 	return false
 }
 
-var mimePlain = []string(MIMEPlain)
+var mimePlain = []string{MIMEPlain}
 
 func serveError(c *Context, code int, defaultMassags []byte) {
 	c.writermem.status = code
